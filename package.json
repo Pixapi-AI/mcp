@@ -1,6 +1,6 @@
 {
   "name": "pixapi-mcp",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Pixapi MCP stdio bridge for AI image and video generation.",
   "type": "module",
   "license": "MIT",
@@ -61,10 +61,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Pixapi-AI/pixapi-mcp.git"
+    "url": "git+https://github.com/Pixapi-AI/mcp.git"
   },
   "bugs": {
-    "url": "https://github.com/Pixapi-AI/pixapi-mcp/issues"
+    "url": "https://github.com/Pixapi-AI/mcp/issues"
   },
   "packageManager": "pnpm@8.15.9"
 }
