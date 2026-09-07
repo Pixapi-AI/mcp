@@ -1,0 +1,70 @@
+{
+  "name": "pixapi-mcp",
+  "version": "0.1.1",
+  "description": "Pixapi MCP stdio bridge for AI image and video generation.",
+  "type": "module",
+  "license": "MIT",
+  "homepage": "https://pixapi.ai",
+  "funding": "https://pixapi.ai",
+  "keywords": [
+    "pixapi",
+    "mcp",
+    "model-context-protocol",
+    "ai",
+    "image-generation",
+    "video-generation",
+    "stdio"
+  ],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "pixapi-mcp": "./dist/cli.js"
+  },
+  "scripts": {
+    "dev": "tsx src/cli.ts",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "release:check": "pnpm typecheck && pnpm test:coverage && pnpm build",
+    "prepack": "pnpm build",
+    "prepublishOnly": "pnpm release:check"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "jsonc-parser": "^3.3.1",
+    "smol-toml": "^1.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^4.1.4",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.4"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Pixapi-AI/pixapi-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Pixapi-AI/pixapi-mcp/issues"
+  },
+  "packageManager": "pnpm@8.15.9"
+}
