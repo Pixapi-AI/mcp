@@ -37,9 +37,9 @@
     "typecheck": "tsc -p tsconfig.test.json",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "release:check": "pnpm typecheck && pnpm test:coverage && pnpm build",
-    "prepack": "pnpm build",
-    "prepublishOnly": "pnpm release:check"
+    "release:check": "npm run typecheck && npm run test:coverage && npm run build",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run release:check"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
