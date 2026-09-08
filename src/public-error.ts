@@ -8,7 +8,7 @@ export function publicErrorMessage(error: unknown): string {
   if (error instanceof PublicError) return error.message;
   if (error instanceof UnauthorizedError ||
       (error instanceof StreamableHTTPError && (error.code === 401 || error.code === 403))) {
-    return 'Pixapi authentication failed. Check your API key and run "pixapi-mcp init" again.';
+    return 'Pixapi authentication failed. Sign in again with your MCP client or run "pixapi-mcp login" for the stdio bridge.';
   }
   if (error instanceof StreamableHTTPError) {
     return 'Pixapi is temporarily unavailable. Check your connection and try again later.';

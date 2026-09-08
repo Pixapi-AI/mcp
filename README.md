@@ -1,69 +1,20 @@
 # pixapi-mcp
 
-Use Pixapi image and video generation tools from any Model Context Protocol
-(MCP) client.
+Use Pixapi image and video generation tools from MCP clients.
 
-- Website: [https://pixapi.ai](https://pixapi.ai)
-- Documentation: [https://pixapi.ai/docs](https://pixapi.ai/docs)
+- Website: [Pixapi](https://pixapi.ai)
 - Remote MCP endpoint: `https://api.pixapi.ai/mcp`
-
-Pixapi currently provides tools for checking model pricing and account
-balance, starting asynchronous image or video tasks, and retrieving results.
-
-## Choose the right connection method
-
-### Remote MCP with OAuth — recommended
-
-If your client supports remote MCP servers and OAuth, add this URL directly:
-
-```text
-https://api.pixapi.ai/mcp
-```
-
-Your client opens Pixapi in a browser so you can sign in and authorize it.
-You do not need this npm package, Node.js, or an API key for that connection
-method.
-
-### Local stdio bridge
-
-Use this npm package when your MCP client only supports local stdio servers.
-The bridge reads a Pixapi API key from a private file and forwards MCP tool
-requests to the remote Pixapi MCP endpoint.
-
-Requirements:
-
-- Node.js 22 or newer
-- A Pixapi account
-- A Pixapi API key created at
-  [https://pixapi.ai/settings/apikeys](https://pixapi.ai/settings/apikeys)
+- License: [MIT](./LICENSE)
 
 ## Quick start
 
-### 1. Create an API key
-
-Sign in to Pixapi, open
-[API Keys](https://pixapi.ai/settings/apikeys), create a key, and copy it.
-Treat the key like a password.
-
-### 2. Configure your MCP client
-
-Run the command from the project in which you want to enable Pixapi.
-
-macOS or Linux:
+Configure your project automatically (Node.js 22+):
 
 ```bash
-PIXAPI_API_KEY='sk_your_key' npx -y pixapi-mcp init
+npx -y pixapi-mcp init --client codex
 ```
 
-Windows PowerShell:
-
-```powershell
-$env:PIXAPI_API_KEY = 'sk_your_key'
-npx -y pixapi-mcp init
-Remove-Item Env:PIXAPI_API_KEY
-```
-
-`init` supports the following project configurations:
+Replace `codex` with your client, or use `--client all` for all five:
 
 | Client | `--client` | Configuration file |
 | --- | --- | --- |
@@ -73,100 +24,92 @@ Remove-Item Env:PIXAPI_API_KEY
 | VS Code / GitHub Copilot | `vscode` | `.vscode/mcp.json` |
 | Gemini CLI | `gemini-cli` | `.gemini/settings.json` |
 
-Without `--client`, `init` configures Claude Code and Cursor, preserving the
-original default. `--client both` explicitly selects that same pair.
+Without `--client`, the default is Claude Code and Cursor (`--client both`).
+Use `--project /path/to/project` to configure another project.
 
-Configure only one client:
+Reload your MCP client and connect to `pixapi`. Complete its browser sign-in
+and authorization prompt the first time. The client saves the OAuth session
+and refreshes it automatically; no API key or credential editing is required.
+The client may ask you to sign in again if authorization is revoked or expires.
+Each client manages its own native OAuth session.
 
-```bash
-PIXAPI_API_KEY='sk_your_key' npx -y pixapi-mcp init --client claude-code
-PIXAPI_API_KEY='sk_your_key' npx -y pixapi-mcp init --client cursor
-PIXAPI_API_KEY='sk_your_key' npx -y pixapi-mcp init --client codex
-PIXAPI_API_KEY='sk_your_key' npx -y pixapi-mcp init --client vscode
-PIXAPI_API_KEY='sk_your_key' npx -y pixapi-mcp init --client gemini-cli
-```
+`init` configures a direct remote HTTP connection by default. If your client
+has an Add MCP Server interface, you can also enter the endpoint URL there
+without installing this npm package or Node.js.
 
-Configure all five clients:
-
-```bash
-PIXAPI_API_KEY='sk_your_key' npx -y pixapi-mcp init --client all
-```
-
-Configure another project directory:
-
-```bash
-PIXAPI_API_KEY='sk_your_key' npx -y pixapi-mcp init \
-  --project /path/to/project
-```
-
-Restart or reload your MCP client after configuration. The client starts the
-bridge with:
-
-```bash
-npx -y pixapi-mcp proxy
-```
-
-You normally do not need to run `proxy` yourself.
-
-Codex loads project configuration only for trusted projects. Open the project
-in Codex, complete its project trust flow, and restart the relevant session.
-In VS Code, open the project and use **MCP: List Servers** to find and start
-`pixapi`, completing any server trust prompt. In Gemini CLI, open the project
-and use `/mcp` to inspect the server. Client policies can disable project MCP
-servers; `init` does not change trust, approval, or administrator policies.
-
-For remote development, run `init` on the same host and OS account that runs
-the stdio server so it can read the private credential file.
+Codex requires a trusted project. In VS Code, use **MCP: List Servers** to
+start `pixapi`; in Gemini CLI, use `/mcp` to inspect it. Complete any client
+trust or sign-in prompt. `init` does not change client security policies.
 
 ## Generated configuration
 
-Claude Code and Cursor use the following credential-free entry:
+Claude Code:
 
 ```json
-{
-  "mcpServers": {
-    "pixapi": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "pixapi-mcp", "proxy"]
-    }
-  }
-}
+{"mcpServers":{"pixapi":{"type":"http","url":"https://api.pixapi.ai/mcp"}}}
 ```
 
-Codex uses TOML:
+Cursor uses the same `mcpServers` entry with `url` and no `type` field.
+VS Code uses `servers` with `type: "http"` and `url`.
+Gemini CLI uses `mcpServers` with `httpUrl`.
+
+Codex:
 
 ```toml
 [mcp_servers.pixapi]
-command = "npx"
-args = ["-y", "pixapi-mcp", "proxy"]
+url = "https://api.pixapi.ai/mcp"
 ```
 
-VS Code uses `servers` instead of `mcpServers`. Gemini CLI uses `mcpServers`
-with `command` and `args`, without the `type` field. All five launch the same
-tools-only proxy.
+Running `init` updates the `pixapi` entry and preserves other servers and
+settings. VS Code JSONC comments are preserved. Codex TOML settings are
+preserved, but comments and formatting are not. All selected configurations
+are parsed before writing; a filesystem failure during writes can still
+leave some files updated. Correct the local issue and rerun `init`.
 
-The API key is stored separately at:
+## Local stdio bridge
 
-```text
-~/.pixapi/mcp-credentials.json
+For clients that need stdio, configure the bridge explicitly:
+
+```bash
+npx -y pixapi-mcp init --client cursor --transport stdio
 ```
 
-On macOS and Linux, the directory is set to mode `0700` and the credential
-file to mode `0600`. The key is sent only to the HTTPS Pixapi MCP endpoint in
-an Authorization header. It is not written to any generated client configuration.
+The generated entry runs `npx -y pixapi-mcp proxy` without credentials.
+Registry installations of the npm package also start the bridge directly:
+no separate `init` command or environment variable is required.
 
-Running `init` again replaces the stored Pixapi credential and updates only
-the `pixapi` MCP server entry. Other MCP servers and top-level fields in the
-configuration files are preserved.
-VS Code JSONC comments are preserved. Codex TOML is parsed and serialized:
-existing settings are preserved, but comments and formatting are not.
+The bridge completes the local MCP handshake immediately. On the first tool
+request it opens browser authorization, then forwards tools to Pixapi.
+Subsequent connections reuse the saved session and refresh tokens automatically.
+For clients with a short tool-discovery timeout, sign in once beforehand:
 
-`init` validates the key and reads all selected configurations before updating
-them. The shared credential is replaced only after all configuration writes
-succeed. If a configuration fails to update, your existing credential is kept.
-If saving the credential itself fails, correct the reported local issue and
-rerun `init`; some project configuration files may already have been updated.
+```bash
+npx -y pixapi-mcp login
+```
+
+If a client times out during the initial browser sign-in, complete sign-in
+and reconnect the client. No authorization URL, code, or token is printed
+to MCP stdout or error output.
+
+OAuth sessions are stored per endpoint in `~/.pixapi/oauth-<hash>.json`.
+On macOS and Linux, the directory uses mode `0700` and files use `0600`.
+Writes are atomic; concurrent bridge processes share an authorization lock.
+PKCE verifiers and callback state are kept only in memory. The callback binds
+to loopback on the same host as the bridge. For a headless or remote host,
+prefer the client's native remote OAuth connection.
+
+### Existing API key installations
+
+Existing API key configurations remain compatible. For an explicit API key
+installation, set `PIXAPI_API_KEY` when running `init`; it configures stdio and
+saves the key privately in `~/.pixapi/mcp-credentials.json`. An explicit
+`--transport remote` always selects native OAuth, even if that variable is set.
+The proxy also accepts `PIXAPI_API_KEY` directly for unattended deployments.
+
+The proxy gives an explicit environment key priority, then a saved OAuth
+session, then a legacy key file. To migrate an existing bridge to OAuth, run
+`pixapi-mcp login` and remove any `PIXAPI_API_KEY` override from its environment.
+Keys and tokens never appear in generated project configurations.
 
 ## Available tools
 
@@ -223,89 +166,54 @@ Recommended agent flow:
 ## CLI reference
 
 ```text
-pixapi-mcp init [options]
+pixapi-mcp init [--client <name|all|both>] [--project <path>] [--transport <remote|stdio>]
+pixapi-mcp login
 pixapi-mcp proxy
 pixapi-mcp --help
 ```
 
-`init` options:
-
-```text
---project <path>            Project to configure (default: current directory)
---client <claude-code|cursor|codex|vscode|gemini-cli|all|both>
---help                      Show command help
-```
-
-For this release, set `PIXAPI_API_KEY` when running `init`.
+With no arguments, the package starts the stdio proxy.
 
 ## Troubleshooting
 
-### `PIXAPI_API_KEY is required`
-
-Create a key at
-[https://pixapi.ai/settings/apikeys](https://pixapi.ai/settings/apikeys) and
-set it only for the `init` command as shown above.
-
-### `Invalid Pixapi API key`
-
-Verify that you copied the complete key and that it starts with `sk_`. Create
-a replacement key if the original is no longer available.
-
-### `A required local file is missing`
-
-The bridge has not been initialized for this user account. Run `init` before
-starting or reloading the MCP client.
-
-### `Pixapi is temporarily unavailable`
-
-Check your network connection and try starting the bridge again later.
-Raw HTTP error responses are omitted from terminal output.
-
-### The tools do not appear
-
-Restart the MCP client after running `init`. Confirm that Node.js 22 or newer
-and `npx` are available in the environment used by the client:
-
-```bash
-node --version
-npx --version
-npx -y pixapi-mcp --help
-```
-
-Also confirm that the project contains the configuration file for your client
-listed above, and that the client has enabled the `pixapi` server.
-
-### Authentication fails after setup
-
-The stored key may have been revoked. Create a new key, run `init` again, and
-restart the MCP client.
+- **Tools do not appear:** reload the client, enable the `pixapi` server, and
+  complete project trust and browser sign-in. For stdio, ensure Node.js 22+
+  and `npx` are available on the host running the bridge.
+- **Authorization denied or timed out:** retry sign-in from the native client,
+  or run `pixapi-mcp login` for the bridge and complete browser authorization.
+- **Callback port unavailable:** close another pending Pixapi login and retry.
+- **Service unavailable:** check your connection and retry later. Internal
+  HTTP responses and exception details are omitted from public errors.
+- **Invalid legacy API key:** replace the key, or migrate to OAuth as above.
 
 ## Security and current limitations
 
-- Do not commit or share `~/.pixapi/mcp-credentials.json`.
-- Revoke unused or exposed keys in your Pixapi account.
-- The stdio bridge currently forwards MCP tools only. Resources, prompts,
-  sampling, and elicitation are not exposed by this package.
-- Image and video generation are asynchronous and currently not idempotent.
-- Account top-up is not exposed as an MCP tool. If credits are insufficient,
-  complete payment on Pixapi and retry.
-- This package is licensed under the [MIT License](./LICENSE).
+- Do not commit or share files in `~/.pixapi/`.
+- Revoke unused or exposed credentials in your Pixapi account.
+- The stdio bridge forwards tools only. Resources, prompts, sampling, and
+  elicitation are not exposed by this package.
+- Image and video generation are asynchronous and not idempotent. The bridge
+  retries HTTP authentication rejection once; it does not retry network
+  failures or server errors that might have occurred after a tool executed.
+- Account top-up is not exposed as an MCP tool; complete payment on Pixapi.
 
-For API behavior, models, pricing, and service documentation, visit
-[https://pixapi.ai/docs](https://pixapi.ai/docs).
+For service documentation, visit [Pixapi docs](https://pixapi.ai/docs).
 
 ## Official MCP Registry
 
 This server is published to the [official MCP
 Registry](https://registry.modelcontextprotocol.io) as
 `io.github.Pixapi-AI/pixapi-mcp`, with both connection methods declared in
-[`server.json`](./server.json): the remote endpoint and the npm package.
+[`server.json`](https://github.com/Pixapi-AI/mcp/blob/master/server.json): the remote endpoint and the npm package. Both support OAuth without a required API key starting with version 0.1.4.
 
 ```bash
 curl "https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.Pixapi-AI/pixapi-mcp"
 ```
 
-Pushing a `v*` tag runs `.github/workflows/publish.yml`: it syncs the version
-from the tag, publishes to npm, then authenticates to the registry with GitHub
-OIDC and publishes `server.json`. No registry token is stored in the
-repository.
+Set matching versions in `package.json`, `package-lock.json`, and `server.json`
+before pushing the corresponding `v*` tag. The release workflow installs locked
+dependencies, runs checks, and validates the Registry manifest before publishing.
+Manual runs must also select that release tag. A rerun compares existing npm
+package integrity and Registry metadata and only publishes missing steps;
+conflicting contents require a new version. Registry authentication uses GitHub
+OIDC, without a stored Registry token.

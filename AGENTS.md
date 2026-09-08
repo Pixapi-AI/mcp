@@ -11,7 +11,7 @@ lets stdio-only MCP clients talk to the remote Pixapi MCP server.
 - By default, users connect straight to the remote MCP endpoint over OAuth and
   do not need Node.js installed.
 - The published npm package is the compatibility entry point for stdio-only
-  clients: a dashboard API Key plus the `init` and `proxy` commands.
+  clients: browser OAuth with automatic token refresh; API Keys remain an optional compatibility mode.
 - A signed native bridge that removes the Node.js requirement, and a browser
   device-flow install endpoint, are planned enhancements.
 
@@ -21,18 +21,18 @@ lets stdio-only MCP clients talk to the remote Pixapi MCP server.
 - `pnpm test:coverage`: run the tests and enforce the 80% global coverage floor.
 - `pnpm typecheck`: run strict TypeScript checking.
 - `pnpm build`: compile to `dist/`.
-- `PIXAPI_API_KEY=... pnpm dev -- init ...`: run the install command from source.
+- `pnpm dev -- init ...`: run the install command from source.
 - `pnpm release:check`: type check, coverage, and build before publishing.
 
 ## Development rules
 
 1. Follow TDD: every behavior change starts with a new or updated failing test
    before the implementation.
-2. Never log `device_code`, API Keys, Authorization headers, or the contents of
+2. Never log `device_code`, API Keys, OAuth codes/tokens, Authorization headers, or the contents of
    credential files.
 3. Never write an API Key into any client configuration (Claude Code, Cursor,
    Codex, VS Code, Gemini CLI). Project configuration may only start the local
-   bridge.
+   bridge or reference the remote HTTPS endpoint.
 4. Credential writes must be atomic and must keep `0700` on directories and
    `0600` on files.
 5. Stay on the validated MCP TypeScript SDK v1 until the v2 migration is

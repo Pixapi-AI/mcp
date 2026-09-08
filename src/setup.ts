@@ -37,6 +37,7 @@ export async function configureWithApiKey(
   const configs = await configureProjectClients({
     projectDir: options.projectDir,
     clients: options.clients,
+    transport: 'stdio',
   });
   const credentialPath = await writeCredential(credential, {
     homeDir: options.homeDir,

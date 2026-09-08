@@ -4,6 +4,8 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import {
+  ErrorCode,
+  McpError,
   CallToolRequestSchema,
   CallToolResultSchema,
   type CallToolRequest,
@@ -15,31 +17,46 @@ import {
 
 import {
   loadCredential,
+  validateCredential,
   type StoredCredential,
 } from './credential-store.js';
 
+import { createOAuthSession, DEFAULT_MCP_URL, type OAuthSessionOptions } from './oauth.js';
+import { PublicError, publicErrorMessage } from './public-error.js';
+import { VERSION } from './version.js';
+
 export interface RemoteToolClient {
-  listTools(params?: ListToolsRequest['params']): Promise<ListToolsResult>;
-  callTool(params: CallToolRequest['params']): Promise<CallToolResult>;
+  listTools(
+    params?: ListToolsRequest['params'],
+    signal?: AbortSignal
+  ): Promise<ListToolsResult>;
+  callTool(
+    params: CallToolRequest['params'],
+    signal?: AbortSignal
+  ): Promise<CallToolResult>;
 }
 
 /**
- * 创建 tools-only 透明代理。
+ * Create a tools-only transparent proxy.
  *
- * 这里使用 SDK 的低层 Server 是有意的：代理不重新定义工具 schema，
- * 而是把远程 tools/list 和 tools/call 原样转交给本地 MCP 客户端。
+ * The low-level SDK Server is intentional: the proxy does not redefine tool
+ * schemas; it forwards remote tools/list and tools/call to the local client.
  */
 export function createToolProxyServer(remote: RemoteToolClient): Server {
   const server = new Server(
-    { name: 'pixapi-mcp-proxy', version: '0.1.0' },
+    { name: 'pixapi-mcp-proxy', version: VERSION },
     { capabilities: { tools: {} } }
   );
 
-  server.setRequestHandler(ListToolsRequestSchema, async (request) =>
-    remote.listTools(request.params)
+  async function safely<T>(operation: () => Promise<T>): Promise<T> {
+    try { return await operation(); }
+    catch (error) { throw new McpError(ErrorCode.InternalError, publicErrorMessage(error)); }
+  }
+  server.setRequestHandler(ListToolsRequestSchema, async (request, extra) =>
+    safely(() => remote.listTools(request.params, extra.signal))
   );
-  server.setRequestHandler(CallToolRequestSchema, async (request) =>
-    remote.callTool(request.params)
+  server.setRequestHandler(CallToolRequestSchema, async (request, extra) =>
+    safely(() => remote.callTool(request.params, extra.signal))
   );
 
   return server;
@@ -51,6 +68,8 @@ export interface RunningProxy {
 
 export interface RunProxyOptions {
   credential?: StoredCredential;
+  homeDir?: string;
+  oauth?: OAuthSessionOptions;
   remoteClient?: Client;
   remoteTransport?: Transport;
   localTransport?: Transport;
@@ -59,41 +78,85 @@ export interface RunProxyOptions {
 export async function runProxy(
   options: RunProxyOptions = {}
 ): Promise<RunningProxy> {
-  // API Key 仅存在于当前进程内存和远程 Authorization header 中，不发给 stdio 客户端。
-  const credential = options.credential ?? (await loadCredential());
+  let credential = options.credential;
+  let oauth: Awaited<ReturnType<typeof createOAuthSession>> | undefined;
+  if (!credential && !options.remoteTransport) {
+    if (process.env.PIXAPI_API_KEY) {
+      credential = validateCredential({ version: 1, apiKey: process.env.PIXAPI_API_KEY, expiresAt: null, mcpUrl: DEFAULT_MCP_URL });
+    } else {
+      oauth = await createOAuthSession({ ...options.oauth, homeDir: options.homeDir ?? options.oauth?.homeDir });
+      if (!oauth.hasTokens()) {
+        try { credential = await loadCredential({ homeDir: options.homeDir }); }
+        catch (error) {
+          // Missing, expired, or unusable leftover keys must not block OAuth.
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT' && !(error instanceof PublicError)) throw error;
+        }
+      }
+    }
+  }
   const remote =
     options.remoteClient ??
     new Client({
       name: 'pixapi-mcp-local-client',
-      version: '0.1.0',
+      version: VERSION,
     });
-  const remoteTransport =
-    options.remoteTransport ??
-    new StreamableHTTPClientTransport(new URL(credential.mcpUrl), {
-      requestInit: {
-        headers: {
-          authorization: `Bearer ${credential.apiKey}`,
+  const makeRemoteTransport = () => {
+    if (options.remoteTransport) return options.remoteTransport;
+    const url = new URL(credential?.mcpUrl ?? options.oauth?.mcpUrl ?? DEFAULT_MCP_URL);
+    if (credential) {
+      return new StreamableHTTPClientTransport(url, {
+        requestInit: {
+          headers: {
+            authorization: `Bearer ${credential.apiKey}`,
+          },
         },
-      },
+      });
+    }
+    // The startup block above always sets credential or oauth here.
+    if (!oauth) throw new PublicError('Pixapi is not configured. Run "pixapi-mcp login" or set PIXAPI_API_KEY.');
+    return new StreamableHTTPClientTransport(url, { fetch: oauth.fetch });
+  };
+  let connection: Promise<void> | undefined;
+  let closed = false;
+  function connect(): Promise<void> {
+    if (closed) return Promise.reject(new Error('Proxy closed'));
+    if (!connection) connection = remote.connect(makeRemoteTransport(), { timeout: 180_000 }).catch(async (error) => {
+      await remote.close().catch(() => {});
+      connection = undefined;
+      throw error;
     });
-  await remote.connect(remoteTransport);
+    return connection;
+  }
+  // Preserve existing API-key startup checks. OAuth starts on the first tool
+  // request so browser consent never delays the local MCP initialize response.
+  if (credential) await connect();
 
-  // 明确用标准 CallToolResultSchema 校验远程返回，避免把不兼容结果传到本地客户端。
+  // Validate remote results with CallToolResultSchema before forwarding them.
   const remoteTools: RemoteToolClient = {
-    listTools: (params) => remote.listTools(params),
-    callTool: async (params) =>
-      CallToolResultSchema.parse(
-        await remote.callTool(params, CallToolResultSchema)
-      ),
+    listTools: async (params, signal) => {
+      await connect();
+      signal?.throwIfAborted();
+      return remote.listTools(params, { signal });
+    },
+    callTool: async (params, signal) => {
+      await connect();
+      // Shared OAuth/connect may finish after this request was cancelled.
+      signal?.throwIfAborted();
+      return CallToolResultSchema.parse(
+        await remote.callTool(params, CallToolResultSchema, { signal })
+      );
+    },
   };
   const local = createToolProxyServer(remoteTools);
-  // Claude Code/Cursor 管理本地 stdio 子进程；网络连接由上面的 remote client 管理。
+  // The host manages stdio; the bridge owns the remote HTTP connection.
   const localTransport = options.localTransport ?? new StdioServerTransport();
   await local.connect(localTransport);
 
   return {
     async close(): Promise<void> {
-      // 先停止接收本地请求，再关闭远程连接，避免退出时产生新的在途调用。
+      closed = true;
+      await oauth?.close();
+      // Stop accepting local requests before closing the remote connection.
       await local.close();
       await remote.close();
     },

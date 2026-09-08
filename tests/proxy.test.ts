@@ -13,6 +13,7 @@ import {
 import { describe, expect, it, vi } from 'vitest';
 
 import { createToolProxyServer, runProxy } from '../src/proxy.js';
+import { readFileSync } from 'node:fs';
 
 describe('tool proxy', () => {
   it('forwards tool discovery and calls without exposing the API key locally', async () => {
@@ -42,6 +43,7 @@ describe('tool proxy', () => {
 
     await server.connect(serverTransport);
     await client.connect(clientTransport);
+    expect(client.getServerVersion()?.version).toBe(JSON.parse(readFileSync('package.json', 'utf8')).version);
 
     const tools = await client.listTools();
     const result = await client.callTool({
@@ -50,10 +52,13 @@ describe('tool proxy', () => {
     });
 
     expect(tools.tools[0]?.name).toBe('pixapi_get_task');
-    expect(remote.callTool).toHaveBeenCalledWith({
-      name: 'pixapi_get_task',
-      arguments: { task_id: 'task_123' },
-    });
+    expect(remote.callTool).toHaveBeenCalledWith(
+      {
+        name: 'pixapi_get_task',
+        arguments: { task_id: 'task_123' },
+      },
+      expect.any(AbortSignal)
+    );
     expect(result.content).toEqual([{ type: 'text', text: 'task:task_123' }]);
 
     await client.close();
@@ -115,4 +120,57 @@ describe('tool proxy', () => {
     await running.close();
     await remoteServer.close();
   });
+
+  it('does not execute a cancelled tool call after a delayed remote connect completes', async () => {
+    let finishConnect!: () => void;
+    const remote = new Client({ name: 'slow-remote', version: '1.0.0' });
+    const connect = vi.spyOn(remote, 'connect').mockImplementation(
+      () => new Promise(resolve => {
+        finishConnect = () => resolve();
+      })
+    );
+    const callTool = vi.spyOn(remote, 'callTool').mockResolvedValue({
+      content: [{ type: 'text', text: 'charged' }],
+    });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const [remoteTransport] = InMemoryTransport.createLinkedPair();
+    const running = await runProxy({
+      remoteClient: remote,
+      remoteTransport,
+      localTransport: serverTransport,
+    });
+    const local = new Client({ name: 'local', version: '1.0.0' });
+    await local.connect(clientTransport);
+
+    const abort = new AbortController();
+    const pending = local.callTool(
+      { name: 'pixapi_generate_image', arguments: { prompt: 'a cat' } },
+      undefined,
+      { signal: abort.signal }
+    );
+    await vi.waitFor(() => expect(connect).toHaveBeenCalled());
+    abort.abort('cancelled');
+    await expect(pending).rejects.toThrow(/cancel/i);
+    finishConnect();
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(callTool).not.toHaveBeenCalled();
+
+    await local.close();
+    await running.close();
+  });
+});
+
+it('initializes locally before an OAuth remote connection completes and redacts remote failures', async () => {
+  const remote = new Client({ name: 'slow-remote', version: '1' });
+  const connect = vi.spyOn(remote, 'connect').mockImplementation(async () => { throw Error('PRIVATE_SQL_TOKEN'); });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  const [remoteTransport] = InMemoryTransport.createLinkedPair();
+  const running = await runProxy({ remoteClient: remote, remoteTransport, localTransport: serverTransport });
+  const local = new Client({ name: 'local', version: '1' });
+  await local.connect(clientTransport);
+  expect(connect).not.toHaveBeenCalled();
+  await expect(local.listTools()).rejects.toThrow('Check your configuration');
+  await expect(local.listTools()).rejects.not.toThrow('PRIVATE_SQL_TOKEN');
+  expect(connect).toHaveBeenCalledTimes(2);
+  await local.close(); await running.close();
 });

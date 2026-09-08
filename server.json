@@ -3,7 +3,7 @@
   "name": "io.github.Pixapi-AI/pixapi-mcp",
   "title": "Pixapi",
   "description": "MCP server for Pixapi: check live credit pricing and balance, then generate images and video.",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "websiteUrl": "https://pixapi.ai",
   "repository": {
     "url": "https://github.com/Pixapi-AI/mcp",
@@ -14,20 +14,11 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "pixapi-mcp",
-      "version": "0.1.3",
+      "version": "0.1.4",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"
-      },
-      "environmentVariables": [
-        {
-          "name": "PIXAPI_API_KEY",
-          "description": "Pixapi API key created at https://pixapi.ai/settings/apikeys",
-          "isRequired": true,
-          "isSecret": true,
-          "format": "string"
-        }
-      ]
+      }
     }
   ],
   "remotes": [

@@ -75,10 +75,14 @@ it.each([
   }
 });
 
-it('keeps missing-key errors actionable and does not echo unknown arguments', async () => {
+it('configures OAuth without a key and does not echo unknown arguments', async () => {
   const home = await mkdtemp(join(tmpdir(), 'pixapi-cli-test-'));
   try {
-    expect((await run(['init'], home)).stderr).toContain('PIXAPI_API_KEY');
+    const init = await run(['init', '--project', join(home, 'project'), '--client', 'codex'], home);
+    expect(init.code).toBe(0);
+    expect(init.stdout).toContain('OAuth');
+    expect(await readFile(join(home, 'project/.codex/config.toml'), 'utf8')).toContain('https://api.pixapi.ai/mcp');
+    await expect(readFile(join(home, '.pixapi/mcp-credentials.json'))).rejects.toMatchObject({ code: 'ENOENT' });
     const result = await run(['sk_private_argument'], home);
     expect(result.code).toBe(1);
     expect(result.stderr).not.toContain('sk_private_argument');

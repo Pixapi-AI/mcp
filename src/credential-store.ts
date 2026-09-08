@@ -10,8 +10,8 @@ import { join } from 'node:path';
 import { PublicError } from './public-error.js';
 
 /**
- * 本地代理读取的最小凭证集合。
- * 不保存用户资料、订单或余额；这些数据始终属于服务端正式账号。
+ * Minimal credential set read by the local bridge.
+ * Profile, order, and balance data stay on the server account.
  */
 export interface StoredCredential {
   version: 1;
@@ -25,7 +25,7 @@ interface CredentialStoreOptions {
 }
 
 function credentialPaths(options: CredentialStoreOptions = {}) {
-  // 凭证放在用户私有目录，而不是项目目录，避免被 Git 意外提交。
+  // Keep credentials in the user-private directory, not the project tree.
   const directory = join(options.homeDir ?? homedir(), '.pixapi');
   const path = join(directory, 'mcp-credentials.json');
   return { directory, path, temporaryPath: `${path}.tmp` };
@@ -72,9 +72,9 @@ export function getCredentialPath(options: CredentialStoreOptions = {}): string 
 }
 
 /**
- * 原子写入完整 API Key：
- * 1. 私有目录 0700；2. 临时文件 0600；3. rename 替换正式文件。
- * 即使进程在写入中途退出，也不会留下可被代理误读的半截 JSON。
+ * Atomically write the full API key:
+ * 1. private directory 0700; 2. temp file 0600; 3. rename into place.
+ * A crash during the write cannot leave a half-written JSON file for the bridge to read.
  */
 export async function writeCredential(
   credential: StoredCredential,
@@ -96,7 +96,7 @@ export async function writeCredential(
   return path;
 }
 
-/** 读取并验证凭证；过期 key 不会被本地代理继续使用。 */
+/** Read and validate credentials. Expired keys are not used by the local bridge. */
 export async function loadCredential(
   options: CredentialStoreOptions = {}
 ): Promise<StoredCredential> {
@@ -106,7 +106,7 @@ export async function loadCredential(
   try {
     parsed = JSON.parse(content);
   } catch {
-    throw new PublicError('Invalid Pixapi credential file. Run "pixapi-mcp init" again.');
+    throw new PublicError('Invalid Pixapi credential file. Remove ~/.pixapi/mcp-credentials.json or run "pixapi-mcp login".');
   }
 
   const credential = validateCredential(parsed);
@@ -114,8 +114,8 @@ export async function loadCredential(
     credential.expiresAt !== null &&
     Date.parse(credential.expiresAt) <= Date.now()
   ) {
-    // 不做静默刷新：用户重新登录授权后，服务端会创建一把新的设备 key。
-    throw new PublicError('Pixapi API key expired. Run "npx pixapi-mcp init" again.');
+    // Do not silently refresh API keys; the stdio bridge falls back to OAuth.
+    throw new PublicError('Pixapi API key expired. Run "pixapi-mcp login" or set PIXAPI_API_KEY.');
   }
   return credential;
 }

@@ -1,12 +1,13 @@
-/** 发起安装授权时用于标识客户端和设备，最终会显示在用户的凭证管理页。 */
+/** Client and device labels shown on the user's credential management page. */
 export interface StartInstallParams {
   clientName: string;
   deviceName: string;
 }
 
 /**
- * start 接口返回的一次性安装会话。
- * deviceCode 是高熵领取凭证，不能输出到终端；userCode 才是给用户看的短码。
+ * One-time install session returned by the start endpoint.
+ * deviceCode is a high-entropy redeem token and must not be printed;
+ * userCode is the short code shown to the user.
  */
 export interface InstallSession {
   deviceCode: string;
@@ -23,7 +24,7 @@ export interface ExchangeInstallParams {
   intervalSeconds: number;
 }
 
-/** exchange 成功后唯一一次返回给安装器的完整凭证。 */
+/** Full credential returned to the installer exactly once after a successful exchange. */
 export interface InstallCredential {
   apiKey: string;
   expiresAt: string;
@@ -91,7 +92,7 @@ async function readJson(response: Response): Promise<JsonRecord> {
   try {
     value = await response.json();
   } catch {
-    // 不拼接原始响应，避免服务端堆栈、SQL 信息等内部细节出现在终端。
+    // Do not include the raw response; it may contain stack traces or SQL details.
     throw new InstallFlowError(
       'invalid_response',
       'Pixapi returned an unreadable response.'
@@ -108,7 +109,7 @@ async function readJson(response: Response): Promise<JsonRecord> {
 
 function normalizeBaseUrl(value: string): string {
   const url = new URL(value);
-  // 生产环境强制 HTTPS；仅允许 localhost/127.0.0.1 使用 HTTP 进行本地联调。
+  // Require HTTPS in production; allow HTTP only for localhost/127.0.0.1.
   const isLocalHttp =
     url.protocol === 'http:' &&
     (url.hostname === 'localhost' || url.hostname === '127.0.0.1');
@@ -119,7 +120,7 @@ function normalizeBaseUrl(value: string): string {
 }
 
 function validateCredential(value: JsonRecord): InstallCredential {
-  // API Key、过期时间和 MCP 地址缺一不可，防止把不完整凭证落盘。
+  // Require an API key, expiration time, and MCP URL before persisting credentials.
   const apiKey = readString(
     value,
     'api_key',
@@ -177,13 +178,13 @@ export class DeviceFlowClient {
   }
 
   /**
-   * 创建十分钟左右的一次性安装会话。
-   * 此请求尚未登录，因此绝不能携带已有 API Key 或其他本地凭证。
+   * Create a one-time install session that lasts about ten minutes.
+   * This request is unauthenticated and must not send an existing API key.
    */
   async start(params: StartInstallParams): Promise<InstallSession> {
     let response: Response;
     try {
-      // TODO(mcp-install-api): 在 Web 端实现 start/exchange 路由后再开放 CLI 安装流程。
+      // TODO(mcp-install-api): open the CLI install flow after the web start/exchange routes exist.
       response = await this.fetch(`${this.apiBaseUrl}/api/mcp/install/start`, {
         method: 'POST',
         headers: {
@@ -239,8 +240,8 @@ export class DeviceFlowClient {
   }
 
   /**
-   * 轮询安装会话，直到用户确认、拒绝或会话过期。
-   * deviceCode 只放在 HTTPS JSON body 中，不进入 URL、日志或错误信息。
+   * Poll the install session until the user confirms, denies, or it expires.
+   * deviceCode stays in the HTTPS JSON body; it is never put in URLs, logs, or errors.
    */
   async exchange(params: ExchangeInstallParams): Promise<InstallCredential> {
     let intervalSeconds = params.intervalSeconds;
@@ -270,7 +271,7 @@ export class DeviceFlowClient {
       const status = typeof body.status === 'string' ? body.status : '';
 
       if (response.ok && status === 'approved') {
-        // 服务端保证完整 key 只能领取一次；客户端验证后立即交给私有凭证存储。
+        // The server issues the full key once; validate it, then hand it to private storage.
         return validateCredential(body);
       }
       if (response.status === 403 || status === 'denied') {
@@ -291,7 +292,7 @@ export class DeviceFlowClient {
         status === 'pending' ||
         status === 'slow_down'
       ) {
-        // 遵循服务端返回的轮询节奏；收到 slow_down/429 时主动增加间隔。
+        // Follow the server poll interval; increase it on slow_down or HTTP 429.
         const retryAfter = body.retry_after;
         if (
           typeof retryAfter === 'number' &&

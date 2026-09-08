@@ -3,15 +3,16 @@ import { dirname, join, resolve } from 'node:path';
 import { applyEdits, modify, parse as parseJsonc, type ParseError } from 'jsonc-parser';
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
 
+import { DEFAULT_MCP_URL } from './oauth.js';
 import { PublicError } from './public-error.js';
 
-/** Only installation formats differ; every client runs the same tools proxy. */
+/** Only installation formats differ; authentication uses standard OAuth. */
 const CLIENT_CONFIGS = {
-  'claude-code': { path: '.mcp.json', format: 'json', key: 'mcpServers', type: true },
-  cursor: { path: '.cursor/mcp.json', format: 'json', key: 'mcpServers', type: true },
-  codex: { path: '.codex/config.toml', format: 'toml', key: 'mcp_servers', type: false },
-  vscode: { path: '.vscode/mcp.json', format: 'jsonc', key: 'servers', type: true },
-  'gemini-cli': { path: '.gemini/settings.json', format: 'json', key: 'mcpServers', type: false },
+  'claude-code': { path: '.mcp.json', format: 'json', key: 'mcpServers', type: true, remote: { type: 'http', url: DEFAULT_MCP_URL } },
+  cursor: { path: '.cursor/mcp.json', format: 'json', key: 'mcpServers', type: true, remote: { url: DEFAULT_MCP_URL } },
+  codex: { path: '.codex/config.toml', format: 'toml', key: 'mcp_servers', type: false, remote: { url: DEFAULT_MCP_URL } },
+  vscode: { path: '.vscode/mcp.json', format: 'jsonc', key: 'servers', type: true, remote: { type: 'http', url: DEFAULT_MCP_URL } },
+  'gemini-cli': { path: '.gemini/settings.json', format: 'json', key: 'mcpServers', type: false, remote: { httpUrl: DEFAULT_MCP_URL } },
 } as const;
 
 export type SupportedClient = keyof typeof CLIENT_CONFIGS;
@@ -25,6 +26,7 @@ export function isSupportedClient(value: string): value is SupportedClient {
 export interface ConfigureProjectClientsOptions {
   projectDir: string;
   clients: SupportedClient[];
+  transport?: 'remote' | 'stdio';
 }
 
 export interface ConfigWriteResult {
@@ -56,7 +58,7 @@ async function readConfig(path: string, definition: ClientConfig): Promise<strin
   }
 }
 
-function updateConfig(content: string, definition: ClientConfig): string {
+function updateConfig(content: string, definition: ClientConfig, transport: 'remote' | 'stdio'): string {
   let parsed: unknown;
   const format = definition.format === 'toml' ? 'TOML' : 'JSON';
   try {
@@ -75,7 +77,7 @@ function updateConfig(content: string, definition: ClientConfig): string {
   if (!isRecord(parsed)) {
     throw new PublicError(`Cannot update non-object ${format} config. Fix the selected project MCP configuration and run init again.`);
   }
-  const server = definition.type
+  const server = transport === 'remote' ? { ...definition.remote } : definition.type
     ? { type: 'stdio', ...PIXAPI_SERVER_CONFIG }
     : { ...PIXAPI_SERVER_CONFIG };
   const existingServers = parsed[definition.key];
@@ -118,7 +120,7 @@ export async function configureProjectClients(
     }
     const definition = CLIENT_CONFIGS[client];
     const path = join(projectDir, definition.path);
-    const content = updateConfig(await readConfig(path, definition), definition);
+    const content = updateConfig(await readConfig(path, definition), definition, options.transport ?? 'remote');
     pending.push({ client, path, content });
   }
 

@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 
 export async function openBrowser(urlValue: string): Promise<void> {
   const url = new URL(urlValue);
-  // 安装确认页会处理账号登录，生产地址必须使用 HTTPS。
+  // Production authorization URLs must use HTTPS. Localhost HTTP is for development.
   if (url.protocol !== 'https:' && url.hostname !== 'localhost') {
     throw new Error('Verification URL must use HTTPS.');
   }
@@ -19,7 +19,7 @@ export async function openBrowser(urlValue: string): Promise<void> {
       : [url.toString()];
 
   await new Promise<void>((resolve, reject) => {
-    // URL 作为独立参数传入，并禁用 shell，避免被解释成命令片段。
+    // Pass the URL as an argument with shell disabled so it is not interpreted as a command.
     const child = spawn(command, args, {
       detached: true,
       stdio: 'ignore',
