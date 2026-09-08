@@ -1,6 +1,7 @@
 {
   "name": "pixapi-mcp",
-  "version": "0.1.2",
+  "version": "0.1.3",
+  "mcpName": "io.github.Pixapi-AI/pixapi-mcp",
   "description": "Pixapi MCP stdio bridge for AI image and video generation.",
   "type": "module",
   "license": "MIT",
