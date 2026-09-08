@@ -293,3 +293,19 @@ restart the MCP client.
 
 For API behavior, models, pricing, and service documentation, visit
 [https://pixapi.ai/docs](https://pixapi.ai/docs).
+
+## Official MCP Registry
+
+This server is published to the [official MCP
+Registry](https://registry.modelcontextprotocol.io) as
+`io.github.Pixapi-AI/pixapi-mcp`, with both connection methods declared in
+[`server.json`](./server.json): the remote endpoint and the npm package.
+
+```bash
+curl "https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.Pixapi-AI/pixapi-mcp"
+```
+
+Pushing a `v*` tag runs `.github/workflows/publish.yml`: it syncs the version
+from the tag, publishes to npm, then authenticates to the registry with GitHub
+OIDC and publishes `server.json`. No registry token is stored in the
+repository.
